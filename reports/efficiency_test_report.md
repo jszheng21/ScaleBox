@@ -1,3 +1,5 @@
+# Efficency Test Report
+
 ## Experimental Setup
 
 ### Dataset
@@ -5,20 +7,20 @@
 - **Sample Size**: 2,048 / 4.096 / 8,192 Python problem instances with reference code
 
 ### Hardware Environment
-- **CPU**: Intel Xeon 6700P Series
-  - **Cores**: 64 Cores / 128 Threads
-  - **Memory**: 256 GB
 
-- **CPU**: HiSilicon Kunpeng 920 7285Z (ARM64)
-  - **Cores**: 320 Cores / 320 Threads
-  - **Memory**: 2.0 TB
+x86 Platform:
 
-### Sandbox Configuration
+- **CPU**: Intel Xeon 6700P Series (64 Cores / 128 Threads)
+- **Memory**: 256 GB
+
+ARM64 Platform:
+
+- **CPU**: HiSilicon Kunpeng 920 7285Z (320 Cores / 320 Threads)
+- **Memory**: 2.0 TB
+
+### ScaleBox Configuration
 - **Load Balancer**: NGINX
 - **Unit Test Parallelism**: `max_runner_concurrency=32, cases_per_subworker=6`
-
-### Client Configuration
-- **Request Concurrency**: ScaleBox: `nodes * workers` (1/2/3 nodes: 32/64/96); SandboxFusion: 128; verl <sub>Prime</sub>: 128
 
 ## Performance Results
 
@@ -56,7 +58,7 @@ ScaleBox consistently outperforms both baselines. On x86 (single node), ScaleBox
 | ScaleBox | 2 | 163.40 | 50.13 (2.03×) | 64 | 64 | 256 |
 | ScaleBox | 3 | 131.92 | 62.10 (2.51×) | 96 | 96 | 384 |
 
-### ARM Platform
+### ARM64 Platform
 
 ### 2048 Cases
 
