@@ -1,0 +1,22 @@
+FROM vemlp-cn-beijing.cr.volces.com/preset-images/code-sandbox:server-20250609
+
+ENV DEBIAN_FRONTEND=noninteractive \
+	PIP_NO_CACHE_DIR=1
+
+RUN set -eux; \
+	mkdir -p /var/run/sshd; \
+	apt-get update --fix-missing; \
+	apt-get install -y --no-install-recommends \
+		# fix perl
+		libdpkg-perl \
+		unrar \
+		openssh-server \
+		openssh-client \
+		psmisc \
+		screen \
+		nginx \
+		python3-pip; \
+	pip install supervisor; \
+	rm -rf /var/lib/apt/lists/* /root/sandbox
+
+WORKDIR /root
