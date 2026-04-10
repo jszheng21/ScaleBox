@@ -180,9 +180,18 @@ async def check_stdio_test_cases_parallel(code: str,
     tasks: List[asyncio.Task[EvalTestCase]] = []
 
     check_stdio_test_case_limited = check_stdio_test_case
-    if sandbox_config.dataset.max_runner_concurrency > 0:
+    runner_concurrency = sandbox_config.dataset.max_runner_concurrency
+    if config.language == 'csharp':
+        # dotnet runtime startup is memory-heavy; cap C# stdio fanout to avoid CoreCLR OOM.
+        csharp_max_concurrency = int(os.getenv('SANDBOX_CSHARP_CASE_CONCURRENCY', '1'))
+        if runner_concurrency > 0:
+            runner_concurrency = min(runner_concurrency, csharp_max_concurrency)
+        else:
+            runner_concurrency = csharp_max_concurrency
+
+    if runner_concurrency > 0:
         check_stdio_test_case_limited = max_concurrency(
-            sandbox_config.dataset.max_runner_concurrency)(check_stdio_test_case)
+            runner_concurrency)(check_stdio_test_case)
 
     for case in cases:
         task = asyncio.create_task(check_stdio_test_case_limited(code, case, config, lower_cmp))
@@ -223,14 +232,16 @@ def concat_function_assertion(function, fn_name, input, output, language):
     if type(output) is str:
         output = f'"{output}"'
     elif type(output) is bool:
-        if language in ["cpp", "java", "csharp", "go", "rust", "D_ut", "lua", "julia", "nodejs", "typescript", "php", "ruby", "scala", "swift"]:
+        if language in ["cpp", "java", "csharp", "go", "rust", "D_ut", "lua", "julia", "nodejs", "typescript", "php", "ruby", "scala", "swift", "kotlin_script"]:
             output = "true" if output else "false"
         elif language == "racket":
             output = "#t" if output else "#f"
-        elif language in ["bash", "perl"]:
+        elif language == "R":
+            output = "TRUE" if output else "FALSE"
+        elif language in ["bash", "perl", "verilog"]:
             output = "1" if output else "0"
     input_str = ', '.join([f'"{i}"' if type(i) is str else str(i) for i in input])
-    # python, racket, D_ut, lua, julia, nodejs, cpp, go, java, typescript, csharp, rust, php, bash, ruby, perl, scala, swift
+    # python, racket, D_ut, lua, julia, nodejs, cpp, go, java, typescript, csharp, rust, php, bash, ruby, perl, scala, kotlin_script, R, verilog, swift
     if language == "python":
         if "class Solution" not in function:
             full_code = f'''
@@ -441,6 +452,43 @@ object Test{fn_name} {{
     }}
 }}
 '''
+    elif language == "kotlin_script":
+        kotlin_input_str = ', '.join([f'"{i}"' if type(i) is str else ("true" if i else "false") if type(i) is bool else str(i) for i in input])
+        full_code = f'''
+{function}
+val res = {fn_name}({kotlin_input_str})
+val expected = {output}
+if (res != expected) {{
+    throw Exception("Test failed")
+}}
+'''
+    elif language == "R":
+        r_input_str = ', '.join([f'"{i}"' if type(i) is str else ("TRUE" if i else "FALSE") if type(i) is bool else str(i) for i in input])
+        full_code = f'''
+{function}
+res <- {fn_name}({r_input_str})
+expected <- {output}
+stopifnot(isTRUE(all.equal(res, expected)))
+'''
+    elif language == "verilog":
+        verilog_input_str = ', '.join([f'"{i}"' if type(i) is str else str(i) for i in input])
+        full_code = f'''
+module tb;
+{function}
+    integer res;
+    integer expected;
+    initial begin
+        res = {fn_name}({verilog_input_str});
+        expected = {output};
+        if (res !== expected) begin
+            $display("Test failed");
+            $fatal;
+        end
+        $display("Test passed");
+        $finish;
+    end
+endmodule
+'''
     elif language == "swift":
         # For Swift, we need to add parameter labels in function call
         # Convert "a, b" to "a: a, b: b" format
@@ -487,9 +535,18 @@ async def check_function_call_test_cases_parallel(code: str,
     tasks: List[asyncio.Task[EvalTestCase]] = []
 
     check_function_call_test_case_limited = check_function_call_test_case
-    if sandbox_config.dataset.max_runner_concurrency > 0:
+    runner_concurrency = sandbox_config.dataset.max_runner_concurrency
+    if config.language == 'csharp':
+        # dotnet runtime startup is memory-heavy; cap C# stdio fanout to avoid CoreCLR OOM.
+        csharp_max_concurrency = int(os.getenv('SANDBOX_CSHARP_CASE_CONCURRENCY', '1'))
+        if runner_concurrency > 0:
+            runner_concurrency = min(runner_concurrency, csharp_max_concurrency)
+        else:
+            runner_concurrency = csharp_max_concurrency
+
+    if runner_concurrency > 0:
         check_function_call_test_case_limited = max_concurrency(
-            sandbox_config.dataset.max_runner_concurrency)(check_function_call_test_case)
+            runner_concurrency)(check_function_call_test_case)
             
     language = config.language
     for case in cases:
@@ -1191,6 +1248,14 @@ async def check_python_stdio_test_cases_single_worker_exec(
     run_all_cases = config.extra.get("run_all_cases", False)
     cases_per_subworker = max(int(getattr(sandbox_config.dataset, "cases_per_subworker", 1) or 1), 1)
     max_subworkers = max(int(getattr(sandbox_config.dataset, "max_runner_concurrency", 1) or 1), 1)
+    
+    if config.language == 'csharp':
+        # dotnet runtime startup is memory-heavy; cap C# function-call fanout to avoid CoreCLR OOM.
+        csharp_max_concurrency = int(os.getenv('SANDBOX_CSHARP_CASE_CONCURRENCY', '1'))
+        if max_subworkers > 0:
+            max_subworkers = min(max_subworkers, csharp_max_concurrency)
+        else:
+            max_subworkers = csharp_max_concurrency
 
     try:
         mp_ctx = multiprocessing.get_context("fork")
@@ -1270,6 +1335,14 @@ async def check_python_function_call_test_cases_single_worker_exec(
     run_all_cases = config.extra.get("run_all_cases", False)
     cases_per_subworker = max(int(getattr(sandbox_config.dataset, "cases_per_subworker", 1) or 1), 1)
     max_subworkers = max(int(getattr(sandbox_config.dataset, "max_runner_concurrency", 1) or 1), 1)
+    
+    if config.language == 'csharp':
+        # dotnet runtime startup is memory-heavy; cap C# function-call fanout to avoid CoreCLR OOM.
+        csharp_max_concurrency = int(os.getenv('SANDBOX_CSHARP_CASE_CONCURRENCY', '1'))
+        if max_subworkers > 0:
+            max_subworkers = min(max_subworkers, csharp_max_concurrency)
+        else:
+            max_subworkers = csharp_max_concurrency
 
     full_codes = []
     for case in cases:
